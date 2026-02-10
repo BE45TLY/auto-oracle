@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
+import CarImage from "@/components/CarImage";
 
 interface CarDetail {
   name: string;
@@ -83,6 +84,13 @@ export default function CarDetailPage() {
           </div>
         ) : car ? (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            {/* Hero Image */}
+            <CarImage
+              carName={`${car.name} ${car.yearRange}`}
+              style="hero"
+              className="w-full h-64 md:h-80 mb-8"
+            />
+
             {/* Header */}
             <div className="mb-8">
               <div className="mb-2 flex items-center gap-3">
