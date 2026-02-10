@@ -1,1 +1,4 @@
 project_id = "upayyhgnjnatkhockivj"
+
+[functions.car-image]
+verify_jwt = false

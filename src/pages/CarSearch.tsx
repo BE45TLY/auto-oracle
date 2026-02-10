@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
+import CarImage from "@/components/CarImage";
 
 interface CarResult {
   name: string;
@@ -98,6 +99,7 @@ export default function CarSearch() {
                   }
                   className="group cursor-pointer border-border/50 bg-card transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
                 >
+                  <CarImage carName={`${car.name} ${car.yearRange}`} className="w-full h-40" />
                   <div className="p-5">
                     <div className="mb-3 flex items-start justify-between">
                       <div>
