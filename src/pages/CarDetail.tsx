@@ -1,7 +1,7 @@
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowLeft, Calendar, Fuel, Gauge, DollarSign, Cog, Car } from "lucide-react";
+import { ArrowLeft, Calendar, Fuel, Gauge, DollarSign, Cog, Car, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,21 +9,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
 import CarImage from "@/components/CarImage";
+import { fetchWikipediaDetail, type CarDetailResult } from "@/lib/carSearchService";
 
 interface CarDetail {
   name: string;
   yearRange: string;
   category: string;
   history: string;
-  specs: {
-    horsepower: string;
-    engine: string;
-    transmission: string;
-    mileage: string;
-    price: string;
-    zeroToSixty: string;
-  };
+  specs: Record<string, string>;
   funFact: string;
+  source?: string;
 }
 
 const specIcons: Record<string, any> = {
@@ -51,14 +46,29 @@ export default function CarDetailPage() {
 
   const { data: car, isLoading } = useQuery({
     queryKey: ["car-detail", name, years],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("car-detail", {
-        body: { name: decodeURIComponent(name || ""), years },
-      });
-      if (error) throw error;
-      return data as CarDetail;
+    queryFn: async (): Promise<CarDetail | null> => {
+      const decodedName = decodeURIComponent(name || "");
+
+      // Try AI first
+      try {
+        const { data, error } = await supabase.functions.invoke("car-detail", {
+          body: { name: decodedName, years },
+        });
+        if (data?.error) throw new Error(data.error);
+        if (error) throw error;
+        if (data?.name) return { ...data, source: "AI" } as CarDetail;
+      } catch (e) {
+        console.warn("AI detail unavailable, trying Wikipedia:", e);
+      }
+
+      // Fallback to Wikipedia
+      const wiki = await fetchWikipediaDetail(decodedName);
+      if (wiki) return { ...wiki } as CarDetail;
+
+      return null;
     },
     enabled: !!name,
+    retry: false,
   });
 
   return (
@@ -93,12 +103,24 @@ export default function CarDetailPage() {
 
             {/* Header */}
             <div className="mb-8">
-              <div className="mb-2 flex items-center gap-3">
+              <div className="mb-2 flex flex-wrap items-center gap-3">
                 <Badge variant="secondary">{car.category}</Badge>
-                <span className="flex items-center gap-1 text-sm text-muted-foreground font-mono">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {car.yearRange}
-                </span>
+                {car.yearRange && (
+                  <span className="flex items-center gap-1 text-sm text-muted-foreground font-mono">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {car.yearRange}
+                  </span>
+                )}
+                {car.source === "Wikipedia" && (
+                  <a
+                    href={`https://en.wikipedia.org/wiki/${encodeURIComponent(car.name)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" /> View on Wikipedia
+                  </a>
+                )}
               </div>
               <h1 className="text-4xl font-bold md:text-5xl">{car.name}</h1>
             </div>

@@ -9,50 +9,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
 import CarImage from "@/components/CarImage";
-
-interface CarResult {
-  name: string;
-  yearRange: string;
-  category: string;
-  shortDescription: string;
-  imageKeyword: string;
-}
-
-// Wikipedia-based fallback search (free, no credits needed)
-async function searchWikipedia(query: string): Promise<CarResult[]> {
-  try {
-    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + " car automobile")}&format=json&srlimit=8&origin=*`;
-    const res = await fetch(searchUrl);
-    const data = await res.json();
-    const searchResults = data?.query?.search || [];
-
-    const results: CarResult[] = [];
-    for (const item of searchResults) {
-      const title = item.title;
-      const snippet = (item.snippet || "").toLowerCase();
-      const carTerms = ["car", "vehicle", "automobile", "engine", "sedan", "coupe", "suv", "truck", "motor", "horsepower", "mph", "cylinder", "turbo", "hybrid", "electric", "hatchback", "convertible", "sports car", "luxury", "manufacturer", "model", "production"];
-      const isCarRelated = carTerms.some((t) => snippet.includes(t)) || query.toLowerCase().split(" ").some((w) => w.length > 2 && title.toLowerCase().includes(w));
-      if (!isCarRelated && results.length > 0) continue;
-
-      const yearMatch = snippet.match(/(\d{4})\s*[-–]\s*(\d{4}|present)/i);
-      const singleYear = snippet.match(/(\d{4})/);
-      const yearRange = yearMatch ? yearMatch[0] : singleYear ? singleYear[0] : "";
-      const cleanSnippet = item.snippet?.replace(/<[^>]*>/g, "") || title;
-
-      results.push({
-        name: title,
-        yearRange,
-        category: "Wikipedia",
-        shortDescription: cleanSnippet,
-        imageKeyword: title,
-      });
-    }
-    return results.slice(0, 8);
-  } catch (e) {
-    console.error("Wikipedia search failed:", e);
-    return [];
-  }
-}
+import { multiSourceCarSearch, type CarResult } from "@/lib/carSearchService";
 
 export default function CarSearch() {
   const [searchParams] = useSearchParams();
@@ -62,14 +19,15 @@ export default function CarSearch() {
   const [results, setResults] = useState<CarResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isWikiFallback, setIsWikiFallback] = useState(false);
+  const [source, setSource] = useState<string | null>(null);
 
   const doSearch = async (q: string) => {
     if (!q.trim()) return;
     setIsLoading(true);
     setErrorMsg(null);
-    setIsWikiFallback(false);
+    setSource(null);
     try {
+      // Try AI-powered search first
       const { data, error } = await supabase.functions.invoke("car-search", {
         body: { query: q },
       });
@@ -77,15 +35,17 @@ export default function CarSearch() {
       if (error) throw error;
       if (data?.results?.length) {
         setResults(data.results);
+        setSource("AI");
         return;
       }
       throw new Error("No results from AI");
     } catch (e: any) {
-      console.warn("AI search failed, falling back to Wikipedia:", e?.message);
-      const wikiResults = await searchWikipedia(q);
-      if (wikiResults.length > 0) {
-        setResults(wikiResults);
-        setIsWikiFallback(true);
+      console.warn("AI search unavailable, using multi-source fallback:", e?.message);
+      // Fallback: Wikipedia + NHTSA combined search
+      const fallbackResults = await multiSourceCarSearch(q);
+      if (fallbackResults.length > 0) {
+        setResults(fallbackResults);
+        setSource("multi");
       } else {
         setResults([]);
         setErrorMsg("No results found. Try a different search term.");
@@ -137,9 +97,9 @@ export default function CarSearch() {
           </div>
         ) : results.length > 0 ? (
           <>
-            {isWikiFallback && (
+            {source === "multi" && (
               <div className="mb-4 rounded-lg border border-border/50 bg-secondary/50 px-4 py-2 text-sm text-muted-foreground">
-                📚 Showing results from Wikipedia (AI search temporarily unavailable)
+                📚 Showing results from Wikipedia & NHTSA (AI search temporarily unavailable)
               </div>
             )}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
