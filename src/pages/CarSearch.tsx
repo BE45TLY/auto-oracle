@@ -18,6 +18,42 @@ interface CarResult {
   imageKeyword: string;
 }
 
+// Wikipedia-based fallback search (free, no credits needed)
+async function searchWikipedia(query: string): Promise<CarResult[]> {
+  try {
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query + " car automobile")}&format=json&srlimit=8&origin=*`;
+    const res = await fetch(searchUrl);
+    const data = await res.json();
+    const searchResults = data?.query?.search || [];
+
+    const results: CarResult[] = [];
+    for (const item of searchResults) {
+      const title = item.title;
+      const snippet = (item.snippet || "").toLowerCase();
+      const carTerms = ["car", "vehicle", "automobile", "engine", "sedan", "coupe", "suv", "truck", "motor", "horsepower", "mph", "cylinder", "turbo", "hybrid", "electric", "hatchback", "convertible", "sports car", "luxury", "manufacturer", "model", "production"];
+      const isCarRelated = carTerms.some((t) => snippet.includes(t)) || query.toLowerCase().split(" ").some((w) => w.length > 2 && title.toLowerCase().includes(w));
+      if (!isCarRelated && results.length > 0) continue;
+
+      const yearMatch = snippet.match(/(\d{4})\s*[-–]\s*(\d{4}|present)/i);
+      const singleYear = snippet.match(/(\d{4})/);
+      const yearRange = yearMatch ? yearMatch[0] : singleYear ? singleYear[0] : "";
+      const cleanSnippet = item.snippet?.replace(/<[^>]*>/g, "") || title;
+
+      results.push({
+        name: title,
+        yearRange,
+        category: "Wikipedia",
+        shortDescription: cleanSnippet,
+        imageKeyword: title,
+      });
+    }
+    return results.slice(0, 8);
+  } catch (e) {
+    console.error("Wikipedia search failed:", e);
+    return [];
+  }
+}
+
 export default function CarSearch() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -26,30 +62,34 @@ export default function CarSearch() {
   const [results, setResults] = useState<CarResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isWikiFallback, setIsWikiFallback] = useState(false);
 
   const doSearch = async (q: string) => {
     if (!q.trim()) return;
     setIsLoading(true);
     setErrorMsg(null);
+    setIsWikiFallback(false);
     try {
       const { data, error } = await supabase.functions.invoke("car-search", {
         body: { query: q },
       });
-      // Edge function may return error JSON in data for 402/429
-      if (data?.error) {
-        throw new Error(data.error);
-      }
+      if (data?.error) throw new Error(data.error);
       if (error) throw error;
-      setResults(data.results || []);
+      if (data?.results?.length) {
+        setResults(data.results);
+        return;
+      }
+      throw new Error("No results from AI");
     } catch (e: any) {
-      console.error("Search error:", e);
-      setResults([]);
-      const msg = e?.message?.toLowerCase() || "";
-      setErrorMsg(
-        msg.includes("credit") || msg.includes("rate limit") || msg.includes("402") || msg.includes("payment")
-          ? "AI credits are currently unavailable. Please try again later or add more credits in Settings → Workspace → Usage."
-          : "Search failed. Please try again."
-      );
+      console.warn("AI search failed, falling back to Wikipedia:", e?.message);
+      const wikiResults = await searchWikipedia(q);
+      if (wikiResults.length > 0) {
+        setResults(wikiResults);
+        setIsWikiFallback(true);
+      } else {
+        setResults([]);
+        setErrorMsg("No results found. Try a different search term.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +136,13 @@ export default function CarSearch() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : results.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <>
+            {isWikiFallback && (
+              <div className="mb-4 rounded-lg border border-border/50 bg-secondary/50 px-4 py-2 text-sm text-muted-foreground">
+                📚 Showing results from Wikipedia (AI search temporarily unavailable)
+              </div>
+            )}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {results.map((car, i) => (
               <motion.div
                 key={i}
@@ -138,6 +184,7 @@ export default function CarSearch() {
               </motion.div>
             ))}
           </div>
+          </>
         ) : errorMsg ? (
           <Card className="border-destructive/30 bg-destructive/5 p-12 text-center">
             <p className="text-destructive font-medium">{errorMsg}</p>
