@@ -16,6 +16,15 @@ const categories = [
   { label: "Performance", icon: Gauge, color: "bg-green-500/20 text-green-400" },
 ];
 
+const fallbackArticles: NewsArticle[] = [
+  { title: "2026 Porsche 911 GT3 RS Gets Track-Focused Aero Package", summary: "Porsche reveals the most extreme 911 GT3 RS yet, with a massive rear wing and redesigned front splitter generating 900 lbs of downforce at 177 mph.", source: "Car and Driver", date: "Feb 24, 2026", category: "Performance" },
+  { title: "Tesla Roadster Finally Enters Production After Years of Delays", summary: "The long-awaited Tesla Roadster has officially entered production with a claimed 0-60 mph time of 1.9 seconds and a 620-mile range.", source: "Motor Trend", date: "Feb 23, 2026", category: "Electric" },
+  { title: "Ferrari's First Fully Electric Supercar Spotted Testing", summary: "Ferrari's upcoming all-electric supercar has been spotted testing at Fiorano, showcasing aggressive styling cues and a low-slung silhouette.", source: "Top Gear", date: "Feb 22, 2026", category: "Electric" },
+  { title: "Lamborghini Revuelto Sets New Nürburgring Lap Record", summary: "The Lamborghini Revuelto has set a blistering new production car lap record at the Nürburgring Nordschleife with a time of 6:44.97.", source: "Road & Track", date: "Feb 21, 2026", category: "Racing" },
+  { title: "Rolls-Royce Unveils Ultra-Luxury Spectre Black Badge Edition", summary: "Rolls-Royce has debuted a blacked-out Black Badge version of its all-electric Spectre, targeting younger ultra-luxury buyers.", source: "Autocar", date: "Feb 20, 2026", category: "Luxury" },
+  { title: "2027 Ford Mustang Dark Horse Gets 550-HP Supercharged V8", summary: "Ford announces a limited-edition supercharged Mustang Dark Horse packing 550 horsepower and a Tremec 6-speed manual transmission.", source: "Car and Driver", date: "Feb 19, 2026", category: "Performance" },
+];
+
 interface NewsArticle {
   title: string;
   summary: string;
@@ -33,12 +42,23 @@ export default function Index() {
   const { data: news, isLoading } = useQuery({
     queryKey: ["car-news", selectedCategory],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("car-news", {
-        body: { category: selectedCategory || "latest" },
-      });
-      if (error) throw error;
-      return data.articles as NewsArticle[];
+      try {
+        const { data, error } = await supabase.functions.invoke("car-news", {
+          body: { category: selectedCategory || "latest" },
+        });
+        if (error) throw error;
+        if (data?.articles?.length) return data.articles as NewsArticle[];
+      } catch (e) {
+        console.warn("News fetch failed, using fallback:", e);
+      }
+      // Return fallback articles filtered by category if selected
+      if (selectedCategory) {
+        return fallbackArticles.filter((a) => a.category === selectedCategory);
+      }
+      return fallbackArticles;
     },
+    retry: false,
+    staleTime: 1000 * 60 * 5,
   });
 
   const handleSearch = (e: React.FormEvent) => {

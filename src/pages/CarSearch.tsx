@@ -25,18 +25,26 @@ export default function CarSearch() {
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<CarResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const doSearch = async (q: string) => {
     if (!q.trim()) return;
     setIsLoading(true);
+    setErrorMsg(null);
     try {
       const { data, error } = await supabase.functions.invoke("car-search", {
         body: { query: q },
       });
       if (error) throw error;
       setResults(data.results || []);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Search error:", e);
+      setResults([]);
+      setErrorMsg(
+        e?.message?.includes("402") || e?.context?.statusText === "Payment Required"
+          ? "AI credits are currently unavailable. Please try again later."
+          : "Search failed. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -125,6 +133,11 @@ export default function CarSearch() {
               </motion.div>
             ))}
           </div>
+        ) : errorMsg ? (
+          <Card className="border-destructive/30 bg-destructive/5 p-12 text-center">
+            <p className="text-destructive font-medium">{errorMsg}</p>
+            <p className="mt-2 text-sm text-muted-foreground">The AI service may be temporarily unavailable.</p>
+          </Card>
         ) : initialQuery ? (
           <Card className="border-border/50 bg-card p-12 text-center">
             <p className="text-muted-foreground">No results found for "{initialQuery}"</p>
