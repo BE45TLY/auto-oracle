@@ -35,14 +35,19 @@ export default function CarSearch() {
       const { data, error } = await supabase.functions.invoke("car-search", {
         body: { query: q },
       });
+      // Edge function may return error JSON in data for 402/429
+      if (data?.error) {
+        throw new Error(data.error);
+      }
       if (error) throw error;
       setResults(data.results || []);
     } catch (e: any) {
       console.error("Search error:", e);
       setResults([]);
+      const msg = e?.message?.toLowerCase() || "";
       setErrorMsg(
-        e?.message?.includes("402") || e?.context?.statusText === "Payment Required"
-          ? "AI credits are currently unavailable. Please try again later."
+        msg.includes("credit") || msg.includes("rate limit") || msg.includes("402") || msg.includes("payment")
+          ? "AI credits are currently unavailable. Please try again later or add more credits in Settings → Workspace → Usage."
           : "Search failed. Please try again."
       );
     } finally {
